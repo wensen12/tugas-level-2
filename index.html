@@ -1,0 +1,26 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Items</title>
+    <link rel="stylesheet" href="https://stackpath.bootstrapcdn.com/bootstrap/5.0.0/css/bootstrap.min.css">
+</head>
+<body>
+    <div class="container">
+        <h1>Items</h1>
+        <a href="/add" class="btn btn-success">Add Item</a>
+        <ul class="list-group mt-3">
+            {% for item in items %}
+                <li class="list-group-item d-flex justify-content-between align-items-center">
+                    {{ item[1] }}
+                    <div>
+                        <a href="/edit/{{ item[0] }}" class="btn btn-warning btn-sm">Edit</a>
+                        <a href="/delete/{{ item[0] }}" class="btn btn-danger btn-sm">Delete</a>
+                    </div>
+                </li>
+            {% endfor %}
+        </ul>
+    </div>
+</body>
+</html>
