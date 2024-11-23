@@ -1,95 +1,110 @@
 from flask import Flask, render_template, request, redirect, url_for, flash
 from flask_login import LoginManager, UserMixin, login_user, login_required, logout_user, current_user
 import mysql.connector
+from werkzeug.security import generate_password_hash, check_password_hash
 
 app = Flask(__name__)
 app.secret_key = 'your_secret_key'
-
-# Konfigurasi Flask-Login
 login_manager = LoginManager()
 login_manager.init_app(app)
 
-# Konfigurasi database
-db = mysql.connector.connect(
-    host="localhost",
-    user="wennnn",
-    password="12345",
-    database="mydatabase"
-)
-cursor = db.cursor()
+# Koneksi ke database
+def get_db_connection():
+    conn = mysql.connector.connect(
+        host='localhost',
+        user='wensen',
+        password='12345',
+        database='money_management'
+    )
+    return conn
 
-# Model User
 class User(UserMixin):
-    def __init__(self, id):
+    def __init__(self, id, username):
         self.id = id
+        self.username = username
 
 @login_manager.user_loader
 def load_user(user_id):
-    return User(user_id)
+    conn = get_db_connection()
+    cursor = conn.cursor()
+    cursor.execute('SELECT * FROM users WHERE id = %s', (user_id,))
+    user = cursor.fetchone()
+    cursor.close()
+    conn.close()
+    return User(user[0], user[1]) if user else None
+
+@app.route('/register', methods=['GET', 'POST'])
+def register():
+    if request.method == 'POST':
+        username = request.form['username']
+        password = generate_password_hash(request.form['password'])
+        conn = get_db_connection()
+        cursor = conn.cursor()
+        cursor.execute('INSERT INTO users (username, password) VALUES (%s, %s)', (username, password))
+        conn.commit()
+        cursor.close()
+        conn.close()
+        return redirect('/login')
+    return render_template('register.html')
 
 @app.route('/login', methods=['GET', 'POST'])
 def login():
     if request.method == 'POST':
         username = request.form['username']
         password = request.form['password']
-        
-        cursor.execute("SELECT * FROM users WHERE username = %s AND password = %s", (username, password))
+        conn = get_db_connection()
+        cursor = conn.cursor()
+        cursor.execute('SELECT * FROM users WHERE username = %s', (username,))
         user = cursor.fetchone()
-        
-        if user:
-            login_user(User(user[0]))  # user[0] adalah ID pengguna
-            return redirect(url_for('dashboard'))
+        cursor.close()
+        conn.close()
+        if user and check_password_hash(user[2], password):
+            login_user(User(user[0], user[1]))
+            return redirect('/')
         else:
-            flash('Invalid credentials')
-    
+            flash('Invalid username or password')
     return render_template('login.html')
 
 @app.route('/logout')
 @login_required
 def logout():
     logout_user()
-    return redirect(url_for('login'))
-
-@app.route('/dashboard')
-@login_required
-def dashboard():
-    return render_template('dashboard.html')
+    return redirect('/login')
 
 @app.route('/')
 @login_required
 def index():
-    cursor.execute("SELECT * FROM items")
-    items = cursor.fetchall()
-    return render_template('index.html', items=items)
+    conn = get_db_connection()
+    cursor = conn.cursor()
+    cursor.execute('SELECT * FROM transactions WHERE user_id = %s', (current_user.id,))
+    transactions = cursor.fetchall()
+    cursor.close()
+    conn.close()
+    return render_template('index.html', transactions=transactions)
 
-@app.route('/add', methods=['GET', 'POST'])
+@app.route('/add', methods=['POST'])
 @login_required
-def add():
-    if request.method == 'POST':
-        name = request.form['name']
-        cursor.execute("INSERT INTO items (name) VALUES (%s)", (name,))
-        db.commit()
-        return redirect('/')
-    return render_template('add.html')
-
-@app.route('/edit/<int:id>', methods=['GET', 'POST'])
-@login_required
-def edit(id):
-    if request.method == 'POST':
-        name = request.form['name']
-        cursor.execute("UPDATE items SET name = %s WHERE id = %s", (name, id))
-        db.commit()
-        return redirect('/')
-    
-    cursor.execute("SELECT * FROM items WHERE id = %s", (id,))
-    item = cursor.fetchone()
-    return render_template('edit.html', item=item)
+def add_transaction():
+    description = request.form['description']
+    amount = request.form['amount']
+    date = request.form['date']
+    conn = get_db_connection()
+    cursor = conn.cursor()
+    cursor.execute('INSERT INTO transactions (description, amount, date, user_id) VALUES (%s, %s, %s, %s)', (description, amount, date, current_user.id))
+    conn.commit()
+    cursor.close()
+    conn.close()
+    return redirect('/')
 
 @app.route('/delete/<int:id>')
 @login_required
-def delete(id):
-    cursor.execute("DELETE FROM items WHERE id = %s", (id,))
-    db.commit()
+def delete_transaction(id):
+    conn = get_db_connection()
+    cursor = conn.cursor()
+    cursor.execute('DELETE FROM transactions WHERE id = %s AND user_id = %s', (id, current_user.id))
+    conn.commit()
+    cursor.close()
+    conn.close()
     return redirect('/')
 
 if __name__ == '__main__':
